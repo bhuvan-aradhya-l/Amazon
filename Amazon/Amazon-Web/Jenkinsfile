@@ -1,46 +1,41 @@
 pipeline {
-  agent any
+    agent any
 
-  stages {
-   
-   stage('clone project') {
-      steps {
-           git branch:'master' , url:'https://github.com/bhuvan-aradhya-l/Amazon.git'
-       }
-   }
+    stages {
+        stage('Build') {
+            steps {
+                echo "Running build..."
+            }
+        }
+    }
 
-   stage('clean') {
-      steps {
-           dir('Amazon/Amazon-Web') {
-           sh 'mvn clean'
-          }
-       }
-   }
+    post {
 
-   stage('compile') {
-      steps {
-           dir('Amazon/Amazon-Web') {
-           sh 'mvn compile'
-          }
-       }
-   }
+        success {
+            emailext(
+                to: "baradhya95@gmail.com",
+                subject: "SUCCESS: Job '${env.JOB_NAME} #${env.BUILD_NUMBER}'",
+                body: """<h3>Build Successful</h3>
+                         <p>Job: ${env.JOB_NAME}</p>
+                         <p>Build Number: ${env.BUILD_NUMBER}</p>
+                         <p><a href="${env.BUILD_URL}">Click here for logs</a></p>
+                      """,
+                mimeType: 'text/html'
+            )
+        }
 
-   stage('test') {
-      steps {
-           dir('Amazon/Amazon-Web') {
-           sh 'mvn test'
-          }
-       }
-   }
+        failure {
+            emailext(
+                to: "baradhya95@gmail.com",
+                subject: "FAILED: Job '${env.JOB_NAME} #${env.BUILD_NUMBER}'",
+                body: """<h3>Build Failed</h3>
+                         <p>Job: ${env.JOB_NAME}</p>
+                         <p>Build Number: ${env.BUILD_NUMBER}</p>
+                         <p><a href="${env.BUILD_URL}">Click here for logs</a></p>
+                      """,
+                mimeType: 'text/html'
+            )
+        }
 
-   stage('build') {
-      steps {
-           dir('Amazon/Amazon-Web') {
-           sh 'mvn clean install'
-          }
-       }
-   }
-   
-}
-
+    }
 }
