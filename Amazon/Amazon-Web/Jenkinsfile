@@ -1,41 +1,20 @@
 pipeline {
     agent any
-
     stages {
         stage('Build') {
             steps {
-                echo "Running build..."
+                echo "Building branch ${env.BRANCH_NAME}"
+            }
+        }
+        stage('Test') {
+            steps {
+                echo "Testing branch ${env.BRANCH_NAME}"
             }
         }
     }
-
     post {
-
-        success {
-            emailext(
-                to: "bhuvan.abc.b12.reports@gmail.com",
-                subject: "SUCCESS: Job '${env.JOB_NAME} #${env.BUILD_NUMBER}'",
-                body: """<h3>Build Successful</h3>
-                         <p>Job: ${env.JOB_NAME}</p>
-                         <p>Build Number: ${env.BUILD_NUMBER}</p>
-                         <p><a href="${env.BUILD_URL}">Click here for logs</a></p>
-                      """,
-                mimeType: 'text/html'
-            )
+        always {
+            echo "Pipeline finished for ${env.BRANCH_NAME}"
         }
-
-        failure {
-            emailext(
-                to: "bhuvan.abc.b12.reports@gmail.com",
-                subject: "FAILED: Job '${env.JOB_NAME} #${env.BUILD_NUMBER}'",
-                body: """<h3>Build Failed</h3>
-                         <p>Job: ${env.JOB_NAME}</p>
-                         <p>Build Number: ${env.BUILD_NUMBER}</p>
-                         <p><a href="${env.BUILD_URL}">Click here for logs</a></p>
-                      """,
-                mimeType: 'text/html'
-            )
-        }
-
     }
 }
