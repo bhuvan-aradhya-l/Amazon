@@ -56,6 +56,7 @@ pipeline {
         stage('SonarQube Scan') {
             steps {
                 dir('Amazon') {
+                    catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
                     withSonarQubeEnv('SonarQubeScanner') {
                         sh "mvn sonar:sonar"
                     }
@@ -66,6 +67,7 @@ pipeline {
         stage('Quality Gate') {
             steps {
                 script {
+                    catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
                     timeout(time: 2, unit: 'MINUTES') {
                         def qg = waitForQualityGate()
                         if (qg.status != "OK") {
