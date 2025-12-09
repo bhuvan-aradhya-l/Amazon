@@ -76,14 +76,16 @@ pipeline {
             }
         }
 
-        stage('Prepare Artifact') {
-            steps {
-                script {
-                    env.WAR_FILE = "Amazon-${params.APP_VERSION}.war"
-                    sh "cp Amazon/Amazon/target/*.war ${env.WAR_FILE}"
-                }
-            }
+stage('Prepare Artifact') {
+    steps {
+        script {
+            env.WAR_FILE = "Amazon-${params.APP_VERSION}.war"
+            sh """
+                cp Amazon/Amazon/target/*.war ${env.WAR_FILE}
+            """
         }
+    }
+}
 
         stage('Deploy to Tomcat') {
             steps {
