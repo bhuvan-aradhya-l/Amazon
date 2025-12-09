@@ -81,7 +81,7 @@ stage('Prepare Artifact') {
         script {
             env.WAR_FILE = "Amazon-${params.APP_VERSION}.war"
             sh """
-                cp Amazon/Amazon/target/*.war ${env.WAR_FILE}
+                cp 'Amazon/Amazon/target/'*.war ${env.WAR_FILE}
             """
         }
     }
