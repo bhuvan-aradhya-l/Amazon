@@ -21,6 +21,8 @@ pipeline {
         stage('Select Environment Based on Branch') {
             steps {
                 script {
+                    def TARGET_ENV = ""
+                    def TOMCAT_HOST = ""
                     if (env.BRANCH_NAME == 'dev') {
                         def TARGET_ENV  = "DEV"
                         def TOMCAT_HOST = "dev-tomcat.local"
@@ -33,7 +35,9 @@ pipeline {
                     } else {
                         error "Unsupported branch: ${env.BRANCH_NAME}"
                     }
-
+                    // Store variables globally for later pipeline stages
+                    env.TARGET_ENV = TARGET_ENV
+                    env.TOMCAT_HOST = TOMCAT_HOST
                     echo "Selected ENV: ${TARGET_ENV} (${TOMCAT_HOST})"
                 }
             }
