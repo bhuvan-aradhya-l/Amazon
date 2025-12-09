@@ -8,6 +8,8 @@ pipeline {
     environment {
         MAVEN = tool 'MAVEN_3'
         PATH = "${MAVEN}/bin:${PATH}"
+    WAR_FILE = "Amazon-1.0.0.war"
+    TOMCAT_HOST = "192.168.65.128" 
     }
 
     stages {
@@ -92,37 +94,37 @@ stage('Prepare Artifact') {
         }
     }
 }
-        stage('Deploy to Tomcat') {
-            steps {
-                script {
-                    sshagent(credentials: ['tomcat_ssh_cred']) {
-                        // Upload the WAR
-                        sh "scp ${env.WAR_FILE} tomcat@${env.TOMCAT_HOST}:/tmp/"
+stage('Deploy to Tomcat') {
+    steps {
+        script {
+            sshagent(credentials: ['tomcat_ssh_cred']) {
+                // Upload the WAR
+                sh "scp ${WORKSPACE}/${env.WAR_FILE} tomcat@${env.TOMCAT_HOST}:/tmp/"
 
-                        // Remote deploy
-                        sh """
-                        ssh tomcat@${env.TOMCAT_HOST} '
-                            # Backup old WAR
-                            if [ -f /opt/tomcat/webapps/Amazon.war ]; then
-                                cp /opt/tomcat/webapps/Amazon.war /opt/tomcat/backups/Amazon-\$(date +%F-%T).war
-                            fi
+                // Remote deploy
+                sh """
+                ssh tomcat@${env.TOMCAT_HOST} '
+                    # Backup old WAR
+                    if [ -f /opt/tomcat/webapps/Amazon.war ]; then
+                        cp /opt/tomcat/webapps/Amazon.war /opt/tomcat/backups/Amazon-\$(date +%F-%T).war
+                    fi
 
-                            sudo systemctl stop tomcat || true
-                            rm -rf /opt/tomcat/webapps/Amazon/
-                            cp /tmp/${env.WAR_FILE} /opt/tomcat/webapps/Amazon.war
-                            sudo systemctl start tomcat
-                            sleep 5
+                    sudo systemctl stop tomcat || true
+                    rm -rf /opt/tomcat/webapps/Amazon/
+                    cp /tmp/${env.WAR_FILE} /opt/tomcat/webapps/Amazon.war
+                    sudo systemctl start tomcat
+                    sleep 5
 
-                            if ! systemctl is-active --quiet tomcat; then
-                                sudo systemctl restart tomcat
-                            fi
-                        '
-                        """
-                    }
-                }
+                    if ! systemctl is-active --quiet tomcat; then
+                        sudo systemctl restart tomcat
+                    fi
+                '
+                """
             }
         }
     }
+}
+
 
     post {
         success {
