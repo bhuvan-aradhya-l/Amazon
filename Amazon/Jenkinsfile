@@ -21,8 +21,6 @@ pipeline {
         stage('Select Environment Based on Branch') {
             steps {
                 script {
-
-                    // Declare variables first (IMPORTANT FIX)
                     def TARGET_ENV = ""
                     def TOMCAT_HOST = ""
 
@@ -39,7 +37,6 @@ pipeline {
                         error "Unsupported branch: ${env.BRANCH_NAME}"
                     }
 
-                    // Export to environment
                     env.TARGET_ENV  = TARGET_ENV
                     env.TOMCAT_HOST = TOMCAT_HOST
 
@@ -50,14 +47,18 @@ pipeline {
 
         stage('Build with Maven') {
             steps {
-                sh "mvn clean install"
+                dir('Amazon') {
+                    sh "mvn clean install"
+                }
             }
         }
 
         stage('SonarQube Scan') {
             steps {
-                withSonarQubeEnv('SonarQubeScanner') {
-                    sh "mvn sonar:sonar"
+                dir('Amazon') {
+                    withSonarQubeEnv('SonarQubeScanner') {
+                        sh "mvn sonar:sonar"
+                    }
                 }
             }
         }
@@ -75,36 +76,34 @@ pipeline {
             }
         }
 
-stage('Prepare Artifact') {
-    steps {
-        script {
-            // Define WAR file name using the APP_VERSION parameter
-            def warFileName = "Amazon-${params.APP_VERSION}.war"
-            
-            // Copy the WAR file from the target folder
-            sh "cp 'target/'*.war ${warFileName}"
-            
-            // Optional: Archive the WAR
-            archiveArtifacts artifacts: warFileName
-        }
-    }
-}
+        stage('Prepare Artifact') {
+            steps {
+                script {
+                    // Define WAR file name
+                    env.WAR_FILE = "Amazon-${params.APP_VERSION}.war"
 
+                    // Copy the WAR file from target folder
+                    dir('Amazon/target') {
+                        sh "cp *.war ${WORKSPACE}/${env.WAR_FILE}"
+                    }
+
+                    // Archive the WAR
+                    archiveArtifacts artifacts: env.WAR_FILE
+                }
+            }
+        }
 
         stage('Deploy to Tomcat') {
             steps {
                 script {
                     sshagent(credentials: ['tomcat_ssh_cred']) {
-
                         // Upload the WAR
-                        sh """
-                            scp ${env.WAR_FILE} tomcat@${env.TOMCAT_HOST}:/tmp/
-                        """
+                        sh "scp ${env.WAR_FILE} tomcat@${env.TOMCAT_HOST}:/tmp/"
 
                         // Remote deploy
                         sh """
                         ssh tomcat@${env.TOMCAT_HOST} '
-                            # Backup old deployment
+                            # Backup old WAR
                             if [ -f /opt/tomcat/webapps/Amazon.war ]; then
                                 cp /opt/tomcat/webapps/Amazon.war /opt/tomcat/backups/Amazon-\$(date +%F-%T).war
                             fi
@@ -112,11 +111,9 @@ stage('Prepare Artifact') {
                             sudo systemctl stop tomcat || true
                             rm -rf /opt/tomcat/webapps/Amazon/
                             cp /tmp/${env.WAR_FILE} /opt/tomcat/webapps/Amazon.war
-
                             sudo systemctl start tomcat
                             sleep 5
 
-                            # Auto restart if failed
                             if ! systemctl is-active --quiet tomcat; then
                                 sudo systemctl restart tomcat
                             fi
