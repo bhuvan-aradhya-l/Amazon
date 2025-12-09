@@ -98,7 +98,7 @@ stage('Deploy to Tomcat') {
     steps {
         script {
             sshagent(credentials: ['tomcat_ssh_cred']) {
-                // Upload the WAR
+                // Upload the WAR to the server
                 sh "scp ${WORKSPACE}/${env.WAR_FILE} tomcat@${env.TOMCAT_HOST}:/tmp/"
 
                 // Remote deploy
@@ -106,18 +106,21 @@ stage('Deploy to Tomcat') {
                 ssh tomcat@${env.TOMCAT_HOST} '
                     # Backup old WAR
                     if [ -f /opt/tomcat/webapps/Amazon.war ]; then
+                        mkdir -p /opt/tomcat/backups
                         cp /opt/tomcat/webapps/Amazon.war /opt/tomcat/backups/Amazon-\$(date +%F-%T).war
                     fi
 
-                    sudo systemctl stop tomcat || true
-                    rm -rf /opt/tomcat/webapps/Amazon/
-                    cp /tmp/${env.WAR_FILE} /opt/tomcat/webapps/Amazon.war
-                    sudo systemctl start tomcat
+                    # Stop Tomcat
+                    /opt/tomcat/bin/shutdown.sh || true
                     sleep 5
 
-                    if ! systemctl is-active --quiet tomcat; then
-                        sudo systemctl restart tomcat
-                    fi
+                    # Remove old app
+                    rm -rf /opt/tomcat/webapps/Amazon/
+                    cp /tmp/${env.WAR_FILE} /opt/tomcat/webapps/Amazon.war
+
+                    # Start Tomcat
+                    /opt/tomcat/bin/startup.sh
+                    sleep 5
                 '
                 """
             }
