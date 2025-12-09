@@ -21,22 +21,29 @@ pipeline {
         stage('Select Environment Based on Branch') {
             steps {
                 script {
+
+                    // Declare variables first (IMPORTANT FIX)
+                    def TARGET_ENV = ""
+                    def TOMCAT_HOST = ""
+
                     if (env.BRANCH_NAME == 'dev') {
-                        def TARGET_ENV  = "DEV"
-                        def TOMCAT_HOST = "dev-tomcat.local"
+                        TARGET_ENV  = "DEV"
+                        TOMCAT_HOST = "dev-tomcat.local"
                     } else if (env.BRANCH_NAME == 'qa') {
-                        def TARGET_ENV  = "QA"
-                        def TOMCAT_HOST = "qa-tomcat.local"
+                        TARGET_ENV  = "QA"
+                        TOMCAT_HOST = "qa-tomcat.local"
                     } else if (env.BRANCH_NAME == 'prod') {
-                        def TARGET_ENV  = "PROD"
-                        def TOMCAT_HOST = "prod-tomcat.local"
+                        TARGET_ENV  = "PROD"
+                        TOMCAT_HOST = "prod-tomcat.local"
                     } else {
                         error "Unsupported branch: ${env.BRANCH_NAME}"
                     }
-                     // Store variables globally for later pipeline stages
-                    env.TARGET_ENV = TARGET_ENV
+
+                    // Export to environment
+                    env.TARGET_ENV  = TARGET_ENV
                     env.TOMCAT_HOST = TOMCAT_HOST
-                    echo "Selected ENV: ${TARGET_ENV} (${TOMCAT_HOST})"
+
+                    echo "Selected ENV: ${env.TARGET_ENV} (${env.TOMCAT_HOST})"
                 }
             }
         }
@@ -71,8 +78,8 @@ pipeline {
         stage('Prepare Artifact') {
             steps {
                 script {
-                    WAR_FILE = "Amazon-${params.APP_VERSION}.war"
-                    sh "cp target/*.war ${WAR_FILE}"
+                    env.WAR_FILE = "Amazon-${params.APP_VERSION}.war"
+                    sh "cp Amazon/Amazon/target/*.war ${env.WAR_FILE}"
                 }
             }
         }
@@ -84,12 +91,12 @@ pipeline {
 
                         // Upload the WAR
                         sh """
-                        scp ${WAR_FILE} tomcat@${TOMCAT_HOST}:/tmp/
+                            scp ${env.WAR_FILE} tomcat@${env.TOMCAT_HOST}:/tmp/
                         """
 
-                        // Deploy remotely
+                        // Remote deploy
                         sh """
-                        ssh tomcat@${TOMCAT_HOST} '
+                        ssh tomcat@${env.TOMCAT_HOST} '
                             # Backup old deployment
                             if [ -f /opt/tomcat/webapps/Amazon.war ]; then
                                 cp /opt/tomcat/webapps/Amazon.war /opt/tomcat/backups/Amazon-\$(date +%F-%T).war
@@ -97,7 +104,7 @@ pipeline {
 
                             sudo systemctl stop tomcat || true
                             rm -rf /opt/tomcat/webapps/Amazon/
-                            cp /tmp/${WAR_FILE} /opt/tomcat/webapps/Amazon.war
+                            cp /tmp/${env.WAR_FILE} /opt/tomcat/webapps/Amazon.war
 
                             sudo systemctl start tomcat
                             sleep 5
@@ -117,30 +124,25 @@ pipeline {
     post {
         success {
             echo "Deployment completed successfully!"
-            // EMAIL notification
             mail(
                 to: "bhuvan.abc.b12.reports@gmail.com",
                 subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "The build completed successfully.\nCheck logs: ${env.BUILD_URL}"
+                body: "Build successful.\nLog: ${env.BUILD_URL}"
             )
-
-            // SLACK notification
             slackSend(
                 channel: '#jenkins-notifications',
                 color: 'good',
                 message: "SUCCESS: *${env.JOB_NAME}* Build #${env.BUILD_NUMBER}\n${env.BUILD_URL}"
             )
         }
+
         failure {
             echo "Deployment failed!"
-            // EMAIL notification
             mail(
                 to: "bhuvan.abc.b12.reports@gmail.com",
                 subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "The build has failed.\nCheck logs: ${env.BUILD_URL}"
+                body: "Build FAILED.\nLog: ${env.BUILD_URL}"
             )
-
-            // SLACK notification
             slackSend(
                 channel: '#jenkins-notifications',
                 color: 'danger',
