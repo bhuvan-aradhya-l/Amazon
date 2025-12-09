@@ -22,14 +22,14 @@ pipeline {
             steps {
                 script {
                     if (env.BRANCH_NAME == 'dev') {
-                        TARGET_ENV  = "DEV"
-                        TOMCAT_HOST = "dev-tomcat.local"
+                        def TARGET_ENV  = "DEV"
+                        def TOMCAT_HOST = "dev-tomcat.local"
                     } else if (env.BRANCH_NAME == 'qa') {
-                        TARGET_ENV  = "QA"
-                        TOMCAT_HOST = "qa-tomcat.local"
+                        def TARGET_ENV  = "QA"
+                        def TOMCAT_HOST = "qa-tomcat.local"
                     } else if (env.BRANCH_NAME == 'prod') {
-                        TARGET_ENV  = "PROD"
-                        TOMCAT_HOST = "prod-tomcat.local"
+                        def TARGET_ENV  = "PROD"
+                        def TOMCAT_HOST = "prod-tomcat.local"
                     } else {
                         error "Unsupported branch: ${env.BRANCH_NAME}"
                     }
@@ -41,7 +41,7 @@ pipeline {
 
         stage('Build with Maven') {
             steps {
-                sh "mvn clean install"
+                sh "mvn -f Amazon/Amazon/pom.xml clean install"
             }
         }
 
