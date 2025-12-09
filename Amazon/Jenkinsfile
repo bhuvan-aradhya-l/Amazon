@@ -80,22 +80,21 @@ pipeline {
         }
     }
 
-        stage('Prepare Artifact') {
-            steps {
-                script {
-                    // Define WAR file name
-                    env.WAR_FILE = "Amazon-${params.APP_VERSION}.war"
-
-                    // Copy the WAR file from target folder
-                    dir('Amazon/target') {
-                        sh "cp *.war ${WORKSPACE}/${env.WAR_FILE}"
-                    }
-
-                    // Archive the WAR
-                    archiveArtifacts artifacts: env.WAR_FILE
-                }
-            }
+stage('Prepare Artifact') {
+    steps {
+        script {
+            // Define WAR file name using the APP_VERSION parameter
+            def warFileName = "Amazon-${params.APP_VERSION}.war"
+            
+            // Copy the WAR file from Amazon-Web/target
+            sh "cp Amazon-Web/target/*.war ${warFileName}"
+            
+            // Optional: Archive the WAR
+            archiveArtifacts artifacts: warFileName
         }
+    }
+}
+
 
         stage('Deploy to Tomcat') {
             steps {
