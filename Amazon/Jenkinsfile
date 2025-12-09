@@ -1,35 +1,149 @@
 pipeline {
     agent any
+
+    parameters {
+        string(name: 'APP_VERSION', defaultValue: '1.0.0', description: 'App version')
+    }
+
+    environment {
+        MAVEN = tool 'MAVEN_3'
+        PATH = "${MAVEN}/bin:${PATH}"
+    }
+
     stages {
-        stage('Initialize') {
+
+        stage('Checkout') {
             steps {
-                echo "Initializing pipeline..."
+                checkout scm
             }
         }
 
-        stage('Checkout Code') {
+        stage('Select Environment Based on Branch') {
             steps {
-                echo "Cloning repository..."
+                script {
+                    if (env.BRANCH_NAME == 'dev') {
+                        def TARGET_ENV  = "DEV"
+                        def TOMCAT_HOST = "dev-tomcat.local"
+                    } else if (env.BRANCH_NAME == 'qa') {
+                        def TARGET_ENV  = "QA"
+                        def TOMCAT_HOST = "qa-tomcat.local"
+                    } else if (env.BRANCH_NAME == 'prod') {
+                        def TARGET_ENV  = "PROD"
+                        def TOMCAT_HOST = "prod-tomcat.local"
+                    } else {
+                        error "Unsupported branch: ${env.BRANCH_NAME}"
+                    }
+
+                    echo "Selected ENV: ${TARGET_ENV} (${TOMCAT_HOST})"
+                }
             }
         }
 
-        stage('Build') {
+        stage('Build with Maven') {
             steps {
-                echo "Building the application..."
+                sh "mvn -f Amazon/Amazon/pom.xml clean install"
             }
         }
 
-        stage('Test') {
+        stage('SonarQube Scan') {
             steps {
-                echo "Executing tests..."
+                withSonarQubeEnv('SonarQubeScanner') {
+                    sh "mvn sonar:sonar"
+                }
             }
         }
 
-        stage('Deploy') {
+        stage('Quality Gate') {
             steps {
-                echo "Deploying application..."
+                script {
+                    timeout(time: 2, unit: 'MINUTES') {
+                        def qg = waitForQualityGate()
+                        if (qg.status != "OK") {
+                            error "Quality Gate Failed: ${qg.status}"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Prepare Artifact') {
+            steps {
+                script {
+                    WAR_FILE = "Amazon-${params.APP_VERSION}.war"
+                    sh "cp target/*.war ${WAR_FILE}"
+                }
+            }
+        }
+
+        stage('Deploy to Tomcat') {
+            steps {
+                script {
+                    sshagent(credentials: ['tomcat_ssh_cred']) {
+
+                        // Upload the WAR
+                        sh """
+                        scp ${WAR_FILE} tomcat@${TOMCAT_HOST}:/tmp/
+                        """
+
+                        // Deploy remotely
+                        sh """
+                        ssh tomcat@${TOMCAT_HOST} '
+                            # Backup old deployment
+                            if [ -f /opt/tomcat/webapps/Amazon.war ]; then
+                                cp /opt/tomcat/webapps/Amazon.war /opt/tomcat/backups/Amazon-\$(date +%F-%T).war
+                            fi
+
+                            sudo systemctl stop tomcat || true
+                            rm -rf /opt/tomcat/webapps/Amazon/
+                            cp /tmp/${WAR_FILE} /opt/tomcat/webapps/Amazon.war
+
+                            sudo systemctl start tomcat
+                            sleep 5
+
+                            # Auto restart if failed
+                            if ! systemctl is-active --quiet tomcat; then
+                                sudo systemctl restart tomcat
+                            fi
+                        '
+                        """
+                    }
+                }
             }
         }
     }
+
+    post {
+        success {
+            echo "Deployment completed successfully!"
+            // EMAIL notification
+            mail(
+                to: "bhuvan.abc.b12.reports@gmail.com",
+                subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: "The build completed successfully.\nCheck logs: ${env.BUILD_URL}"
+            )
+
+            // SLACK notification
+            slackSend(
+                channel: '#jenkins-notifications',
+                color: 'good',
+                message: "SUCCESS: *${env.JOB_NAME}* Build #${env.BUILD_NUMBER}\n${env.BUILD_URL}"
+            )
+        }
+        failure {
+            echo "Deployment failed!"
+            // EMAIL notification
+            mail(
+                to: "bhuvan.abc.b12.reports@gmail.com",
+                subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: "The build has failed.\nCheck logs: ${env.BUILD_URL}"
+            )
+
+            // SLACK notification
+            slackSend(
+                channel: '#jenkins-notifications',
+                color: 'danger',
+                message: "FAILED: *${env.JOB_NAME}* Build #${env.BUILD_NUMBER}\n${env.BUILD_URL}"
+            )
+        }
+    }
 }
-//Testing Webhook
