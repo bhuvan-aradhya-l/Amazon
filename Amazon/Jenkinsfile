@@ -124,7 +124,7 @@ stage('Deploy to Tomcat') {
         }
     }
 }
-
+    }
 
     post {
         success {
@@ -155,5 +155,4 @@ stage('Deploy to Tomcat') {
             )
         }
     }
-}
 }
