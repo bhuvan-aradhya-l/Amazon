@@ -50,7 +50,8 @@ pipeline {
 
         stage('Build with Maven') {
             steps {
-                sh "mvn -f Amazon/Amazon/pom.xml clean install"
+                cd Amazon
+                sh "mvn clean install"
             }
         }
 
