@@ -50,7 +50,6 @@ pipeline {
 
         stage('Build with Maven') {
             steps {
-                cd Amazon
                 sh "mvn clean install"
             }
         }
@@ -83,7 +82,7 @@ stage('Prepare Artifact') {
             def warFileName = "Amazon-${params.APP_VERSION}.war"
             
             // Copy the WAR file from the target folder
-            sh "cp 'Amazon/Amazon/target/'*.war ${warFileName}"
+            sh "cp 'target/'*.war ${warFileName}"
             
             // Optional: Archive the WAR
             archiveArtifacts artifacts: warFileName
