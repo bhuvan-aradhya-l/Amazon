@@ -94,42 +94,40 @@ stage('Prepare Artifact') {
         }
     }
 }
-stage('Deploy to Tomcat') {
-    steps {
-        script {
-            sshagent(credentials: ['tomcat_ssh_cred']) {
-                // Upload the WAR
-                sh "scp ${WORKSPACE}/${env.WAR_FILE} tomcat@${env.TOMCAT_HOST}:/tmp/"
+        stage('Deploy to Tomcat') {
+            steps {
+                script {
+                    sshagent(['tomcat_ssh_cred']) {
 
-                // Deploy on remote server
-                sh """
-                ssh tomcat@${env.TOMCAT_HOST} '
-                    # Make backup folder if it doesn't exist
-                    sudo mkdir -p /opt/tomcat/backups
+                        // Upload WAR
+                        sh "scp ${WORKSPACE}/${env.WAR_FILE} tomcat@${env.TOMCAT_HOST}:/tmp/"
 
-                    # Backup old WAR if exists
-                    if [ -f /opt/tomcat/webapps/Amazon.war ]; then
-                        sudo cp /opt/tomcat/webapps/Amazon.war /opt/tomcat/backups/Amazon-\$(date +%F-%T).war
-                    fi
+                        // Deploy
+                        sh """
+                            ssh tomcat@${env.TOMCAT_HOST} '
+                                mkdir -p /opt/tomcat/backups
 
-                    # Stop Tomcat gracefully
-                    /opt/tomcat/bin/shutdown.sh || true
-                    sleep 5
+                                # Backup existing WAR
+                                if [ -f /opt/tomcat/webapps/Amazon.war ]; then
+                                    cp /opt/tomcat/webapps/Amazon.war /opt/tomcat/backups/Amazon-\$(date +%F-%T).war
+                                fi
 
-                    # Remove old deployment
-                    sudo rm -rf /opt/tomcat/webapps/Amazon/
+                                # Stop Tomcat (no sudo)
+                                /opt/tomcat/bin/shutdown.sh || true
+                                sleep 5
 
-                    # Copy new WAR
-                    cp /tmp/${env.WAR_FILE} /opt/tomcat/webapps/Amazon.war
+                                rm -rf /opt/tomcat/webapps/Amazon/
+                                cp /tmp/${env.WAR_FILE} /opt/tomcat/webapps/Amazon.war
 
-                    # Start Tomcat
-                    /opt/tomcat/bin/startup.sh
-                '
-                """
+                                # Start Tomcat
+                                /opt/tomcat/bin/startup.sh
+                            '
+                        """
+                    }
+                }
             }
         }
-    }
-}
+
     }
 
     post {
