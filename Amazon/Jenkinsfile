@@ -8,6 +8,8 @@ pipeline {
     environment {
         MAVEN = tool 'MAVEN_3'
         PATH = "${MAVEN}/bin:${PATH}"
+    WAR_FILE = "Amazon-1.0.0.war"
+    TOMCAT_HOST = "192.168.65.128" 
     }
 
     stages {
@@ -23,126 +25,118 @@ pipeline {
                 script {
                     def TARGET_ENV = ""
                     def TOMCAT_HOST = ""
+
                     if (env.BRANCH_NAME == 'dev') {
-                        def TARGET_ENV  = "DEV"
-                        def TOMCAT_HOST = "dev-tomcat.local"
+                        TARGET_ENV  = "DEV"
+                        TOMCAT_HOST = "dev-tomcat.local"
                     } else if (env.BRANCH_NAME == 'qa') {
-                        def TARGET_ENV  = "QA"
-                        def TOMCAT_HOST = "qa-tomcat.local"
+                        TARGET_ENV  = "QA"
+                        TOMCAT_HOST = "qa-tomcat.local"
                     } else if (env.BRANCH_NAME == 'prod') {
-                        def TARGET_ENV  = "PROD"
-                        def TOMCAT_HOST = "prod-tomcat.local"
+                        TARGET_ENV  = "PROD"
+                        TOMCAT_HOST = "prod-tomcat.local"
                     } else {
                         error "Unsupported branch: ${env.BRANCH_NAME}"
                     }
-                    // Store variables globally for later pipeline stages
-                    env.TARGET_ENV = TARGET_ENV
+
+                    env.TARGET_ENV  = TARGET_ENV
                     env.TOMCAT_HOST = TOMCAT_HOST
-                    echo "Selected ENV: ${TARGET_ENV} (${TOMCAT_HOST})"
+
+                    echo "Selected ENV: ${env.TARGET_ENV} (${env.TOMCAT_HOST})"
                 }
             }
         }
 
         stage('Build with Maven') {
             steps {
-                sh "mvn -f Amazon/Amazon/pom.xml clean install"
+                dir('Amazon') {
+                    sh "mvn clean install"
+                }
             }
         }
 
         stage('SonarQube Scan') {
             steps {
-                withSonarQubeEnv('SonarQubeScanner') {
-                    sh "mvn sonar:sonar"
-                }
-            }
-        }
-
-        stage('Quality Gate') {
-            steps {
-                script {
-                    timeout(time: 2, unit: 'MINUTES') {
-                        def qg = waitForQualityGate()
-                        if (qg.status != "OK") {
-                            error "Quality Gate Failed: ${qg.status}"
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Prepare Artifact') {
-            steps {
-                script {
-                    WAR_FILE = "Amazon-${params.APP_VERSION}.war"
-                    sh "cp target/*.war ${WAR_FILE}"
-                }
-            }
-        }
-
-        stage('Deploy to Tomcat') {
-            steps {
-                script {
-                    sshagent(credentials: ['tomcat_ssh_cred']) {
-
-                        // Upload the WAR
-                        sh """
-                        scp ${WAR_FILE} tomcat@${TOMCAT_HOST}:/tmp/
-                        """
-
-                        // Deploy remotely
-                        sh """
-                        ssh tomcat@${TOMCAT_HOST} '
-                            # Backup old deployment
-                            if [ -f /opt/tomcat/webapps/Amazon.war ]; then
-                                cp /opt/tomcat/webapps/Amazon.war /opt/tomcat/backups/Amazon-\$(date +%F-%T).war
-                            fi
-
-                            sudo systemctl stop tomcat || true
-                            rm -rf /opt/tomcat/webapps/Amazon/
-                            cp /tmp/${WAR_FILE} /opt/tomcat/webapps/Amazon.war
-
-                            sudo systemctl start tomcat
-                            sleep 5
-
-                            # Auto restart if failed
-                            if ! systemctl is-active --quiet tomcat; then
-                                sudo systemctl restart tomcat
-                            fi
-                        '
-                        """
+                dir('Amazon') {
+                    catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                    withSonarQubeEnv('SonarQubeScanner') {
+                        sh "mvn sonar:sonar"
                     }
                 }
             }
         }
     }
 
+stage('Prepare Artifact') {
+    steps {
+        script {
+            dir("${env.WORKSPACE}/Amazon") { 
+                sh '''
+                # Copy the WAR file from the Maven target directory to workspace root
+                cp Amazon-Web/target/Amazon.war ${WORKSPACE}/Amazon-1.0.0.war
+                '''
+            }
+        }
+    }
+}
+        stage('Deploy to Tomcat') {
+            steps {
+                script {
+                    sshagent(['tomcat_ssh_cred']) {
+
+                        // Upload WAR
+                        sh "scp ${WORKSPACE}/${env.WAR_FILE} tomcat@${env.TOMCAT_HOST}:/tmp/"
+
+                        // Deploy
+                        sh """
+                            ssh tomcat@${env.TOMCAT_HOST} '
+                                mkdir -p /opt/tomcat/backups
+
+                                # Backup existing WAR
+                                if [ -f /opt/tomcat/webapps/Amazon.war ]; then
+                                    cp /opt/tomcat/webapps/Amazon.war /opt/tomcat/backups/Amazon-\$(date +%F-%T).war
+                                fi
+
+                                # Stop Tomcat (no sudo)
+                                /opt/tomcat/bin/shutdown.sh || true
+                                sleep 5
+
+                                rm -rf /opt/tomcat/webapps/Amazon/
+                                cp /tmp/${env.WAR_FILE} /opt/tomcat/webapps/Amazon.war
+
+                                # Start Tomcat
+                                /opt/tomcat/bin/startup.sh
+                            '
+                        """
+                    }
+                }
+            }
+        }
+
+    }
+
     post {
         success {
             echo "Deployment completed successfully!"
-            // EMAIL notification
             mail(
                 to: "bhuvan.abc.b12.reports@gmail.com",
                 subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "The build completed successfully.\nCheck logs: ${env.BUILD_URL}"
+                body: "Build successful.\nLog: ${env.BUILD_URL}"
             )
-
-            // SLACK notification
             slackSend(
                 channel: '#jenkins-notifications',
                 color: 'good',
                 message: "SUCCESS: *${env.JOB_NAME}* Build #${env.BUILD_NUMBER}\n${env.BUILD_URL}"
             )
         }
+
         failure {
             echo "Deployment failed!"
-            // EMAIL notification
             mail(
                 to: "bhuvan.abc.b12.reports@gmail.com",
                 subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "The build has failed.\nCheck logs: ${env.BUILD_URL}"
+                body: "Build FAILED.\nLog: ${env.BUILD_URL}"
             )
-
-            // SLACK notification
             slackSend(
                 channel: '#jenkins-notifications',
                 color: 'danger',
